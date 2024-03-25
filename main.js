@@ -1,10 +1,5 @@
 'use strict';
 
-let gl;                         // The webgl context.
-let surface;                    // A surface model
-let shProgram;                  // A shader program
-let spaceball;                  // A SimpleRotator object that lets the user rotate the view by mouse.
-
 let t_max = 1;
 let alpha_max = 720;
 let count_vertical = 0;
@@ -22,57 +17,32 @@ let y_max = 1;
 let y_min = -1;
 let y_steps = 30;
 let x_steps = 30;
+let { PI, tan } = Math
 
 let gamma_zero = deg2rad(60);
+
+let conv = 50, eyes = 1, fov = 45, near = 1;
+
+let gl;                         // The webgl context.
+let surface;                    // A surface model
+let shProgram;                  // A shader program
+let spaceball;                  // A SimpleRotator object that lets the user rotate the view by mouse.
+let cam;
 
 function deg2rad(angle) {
     return angle * Math.PI / 180;
 }
 
-let keys = ['x_max', 'x_min', 'y_max', 'y_min', 'y_steps', 'x_steps'];
-
-keys.forEach((element) => {
-    console.log(element + "_Slider");
-    document.getElementById(element + "_Slider").addEventListener("change", function () {
-        let rValue = document.getElementById(element + "_Slider").value;
-        document.getElementById(element + "_Value_span").textContent = rValue;
-        updateSurface();
-    });
-    console.log(element + "_Slider");
-})
-
-
-
-function updateSurface() {
-    x_max = parseFloat(document.getElementById("x_max_Slider").value);
-    x_min = parseFloat(document.getElementById("x_min_Slider").value);
-
-    y_max = parseFloat(document.getElementById("y_max_Slider").value);
-    y_min = parseFloat(document.getElementById("y_min_Slider").value);
-
-    y_steps = parseFloat(document.getElementById("y_steps_Slider").value);
-    x_steps = parseFloat(document.getElementById("x_steps_Slider").value);
-
-    surface.BufferData(CreateSurfaceData(x_max, x_min, y_max, y_min, x_steps, y_steps),
-        CreateNormalData(x_max, x_min, y_max, y_min, x_steps, y_steps)
-    );
-
-    draw();
-}
 // Constructor
 function Model(name) {
     this.name = name;
     this.iVertexBuffer = gl.createBuffer();
-    this.iNormalBuffer = gl.createBuffer();
     this.count = 0;
 
-    this.BufferData = function (vertices, normals) {
+    this.BufferData = function (vertices) {
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STREAM_DRAW);
-
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.iNormalBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STREAM_DRAW);
 
         this.count = vertices.length / 3;
     }
@@ -83,11 +53,17 @@ function Model(name) {
         gl.vertexAttribPointer(shProgram.iAttribVertex, 3, gl.FLOAT, false, 0, 0);
         gl.enableVertexAttribArray(shProgram.iAttribVertex);
 
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.iNormalBuffer);
-        gl.vertexAttribPointer(shProgram.iAttribNormal, 3, gl.FLOAT, true, 0, 0);
-        gl.enableVertexAttribArray(shProgram.iAttribNormal);
-
         gl.drawArrays(gl.TRIANGLES, 0, this.count);
+    }
+    this.DrawLines = function () {
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexBuffer);
+        gl.vertexAttribPointer(shProgram.iAttribVertex, 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(shProgram.iAttribVertex);
+
+        let n = this.count / count_horisontal_steps
+        for (let i = 0; i < count_horisontal_steps; i++) {
+            gl.drawArrays(gl.LINE_STRIP, n * i, n);
+        }
     }
 }
 
@@ -120,33 +96,44 @@ function draw() {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     /* Set the values of the projection transformation */
-    let projection = m4.perspective(Math.PI / 8, 1, 8, 20);
+    let projection = m4.perspective(Math.PI / 8, 1, 8, 12);
 
     /* Get the view matrix from the SimpleRotator object.*/
     let modelView = spaceball.getViewMatrix();
 
     let rotateToPointZero = m4.axisRotation([0.707, 0.707, 0], 0.7);
-    let translateToPointZero = m4.translation(0, 0, -14);
+    let translateToPointZero = m4.translation(0, 0, -5);
 
     let matAccum0 = m4.multiply(rotateToPointZero, modelView);
     let matAccum1 = m4.multiply(translateToPointZero, matAccum0);
 
+    /* Draw the six faces of a cube, with different colors. */
+    
+
     /* Multiply the projection matrix times the modelview matrix to give the
        combined transformation matrix, and send that to the shader program. */
     let modelViewProjection = m4.multiply(projection, matAccum1);
-
+    cam.ApplyLeftFrustum()
+    modelViewProjection = m4.multiply(cam.projection, m4.multiply(cam.modelView, matAccum1));
     gl.uniformMatrix4fv(shProgram.iModelViewProjectionMatrix, false, modelViewProjection);
-
-    const normal = m4.identity();
-    m4.inverse(modelView, normal);
-    m4.transpose(normal, normal);
-
-    gl.uniformMatrix4fv(shProgram.iNormalMatrix, false, normal);
-
-    /* Draw the six faces of a cube, with different colors. */
+    gl.colorMask(true, false, false, false);
     gl.uniform4fv(shProgram.iColor, [1, 1, 0, 1]);
-
     surface.Draw();
+    gl.uniform4fv(shProgram.iColor, [0, 0, 1, 1]);
+    surface.DrawLines();
+
+    gl.clear(gl.DEPTH_BUFFER_BIT)
+
+    cam.ApplyRightFrustum()
+    modelViewProjection = m4.multiply(cam.projection, m4.multiply(cam.modelView, matAccum1));
+    gl.uniformMatrix4fv(shProgram.iModelViewProjectionMatrix, false, modelViewProjection);
+    gl.colorMask(false, true, true, false);
+    gl.uniform4fv(shProgram.iColor, [1, 1, 0, 1]);
+    surface.Draw();
+    gl.uniform4fv(shProgram.iColor, [0, 0, 1, 1]);
+    surface.DrawLines();
+
+    gl.colorMask(true, true, true, true);
 }
 
 function CreateSurfaceData(x_max, x_min, y_max, y_min, x_steps, y_steps) {
@@ -190,64 +177,39 @@ function CreateSurfaceData(x_max, x_min, y_max, y_min, x_steps, y_steps) {
             count_horisontal_steps++;
             count_horisontal++;
         }
+        // console.log(vertexList.length / 3)
     }
-    console.log(vertexList.length)
+    // console.log(count_horisontal_steps)
     return vertexList;
 }
 
-function CreateNormalData(x_max, x_min, y_max, y_min, x_steps, y_steps) {
-    count_vertical = 0;
-    count_horisontal = 0;
+// main rendering function
+// function DrawGLScene() {
+//     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-    let normalList = [];
+//     // Set up the stereo camera system
+//     cam = new StereoCamera(
+//         2000.0,     // Convergence
+//         70.0,       // Eye Separation
+//         1.3333,     // Aspect Ratio
+//         45.0,       // FOV along Y in degrees
+//         10.0,       // Near Clipping Distance
+//         20000.0);   // Far Clipping Distance
 
-    let shoe = function (a, b) {
-        return (a * a * a) / 3 - (b * b) / 2;
-    }
+//     cam.ApplyLeftFrustum();
+//     gl.colorMask(true, false, false, false);
 
-    let calcNormal = function (i, j, stepJ, stepI) {
-        let v0 = [i, j, shoe(i, j)]
-        let v1 = [i + stepI, j, shoe(i + stepI, j)]
-        let v2 = [i, j + stepJ, shoe(i, j + stepJ)]
-        let v3 = [i - stepI, j + stepJ, shoe(i - stepI, j + stepJ)]
-        let v4 = [i - stepI, j, shoe(i - stepI, j)]
-        let v5 = [i - stepI, j - stepJ, shoe(i - stepI, j - stepJ)]
-        let v6 = [i, j - stepJ, shoe(i, j - stepJ)]
-        let v01 = m4.subtractVectors(v1, v0)
-        let v02 = m4.subtractVectors(v2, v0)
-        let v03 = m4.subtractVectors(v3, v0)
-        let v04 = m4.subtractVectors(v4, v0)
-        let v05 = m4.subtractVectors(v5, v0)
-        let v06 = m4.subtractVectors(v6, v0)
-        let n1 = m4.normalize(m4.cross(v01, v02))
-        let n2 = m4.normalize(m4.cross(v02, v03))
-        let n3 = m4.normalize(m4.cross(v03, v04))
-        let n4 = m4.normalize(m4.cross(v04, v05))
-        let n5 = m4.normalize(m4.cross(v05, v06))
-        let n6 = m4.normalize(m4.cross(v06, v01))
-        let n = [(n1[0] + n2[0] + n3[0] + n4[0] + n5[0] + n6[0]) / 6.0,
-        (n1[1] + n2[1] + n3[1] + n4[1] + n5[1] + n6[1]) / 6.0,
-        (n1[2] + n2[2] + n3[2] + n4[2] + n5[2] + n6[2]) / 6.0]
-        n = m4.normalize(n);
-        return n;
-    }
+//     DrawSurface();
 
-    for (let j = x_min; j < x_max + (x_max - x_min) / x_steps; j += (x_max - x_min) / x_steps) {
-        count_horisontal_steps = 0;
-        for (let i = y_min; i < y_max + (y_max - y_min) / y_steps; i += (y_max - y_min) / y_steps) {
-            normalList.push(...calcNormal(i, j, (x_max - x_min) / x_steps, (y_max - y_min) / y_steps))
-            normalList.push(...calcNormal(i + (y_max - y_min) / y_steps, j, (x_max - x_min) / x_steps, (y_max - y_min) / y_steps))
-            normalList.push(...calcNormal(i, j + (x_max - x_min) / x_steps, (x_max - x_min) / x_steps, (y_max - y_min) / y_steps))
-            normalList.push(...calcNormal(i, j + (x_max - x_min) / x_steps, (x_max - x_min) / x_steps, (y_max - y_min) / y_steps))
-            normalList.push(...calcNormal(i + (y_max - y_min) / y_steps, j, (x_max - x_min) / x_steps, (y_max - y_min) / y_steps))
-            normalList.push(...calcNormal(i + (y_max - y_min) / y_steps, j + (x_max - x_min) / x_steps, (x_max - x_min) / x_steps, (y_max - y_min) / y_steps))
-            count_horisontal_steps++;
-            count_horisontal++;
-        }
-    }
-    console.log(normalList)
-    return normalList;
-}
+//     gl.clear(GL_DEPTH_BUFFER_BIT);
+
+//     cam.ApplyRightFrustum();
+//     gl.colorMask(false, true, true, false);
+
+//     DrawSurface();
+
+//     gl.colorMask(true, true, true, true);
+// }
 
 
 /* Initialize the WebGL context. Called from init() */
@@ -258,15 +220,11 @@ function initGL() {
     shProgram.Use();
 
     shProgram.iAttribVertex = gl.getAttribLocation(prog, "vertex");
-    shProgram.iAttribNormal = gl.getAttribLocation(prog, "normal");
     shProgram.iModelViewProjectionMatrix = gl.getUniformLocation(prog, "ModelViewProjectionMatrix");
-    shProgram.iNormalMatrix = gl.getUniformLocation(prog, "NormalMatrix");
     shProgram.iColor = gl.getUniformLocation(prog, "color");
 
     surface = new Model('Surface');
-    surface.BufferData(CreateSurfaceData(x_max, x_min, y_max, y_min, x_steps, y_steps),
-        CreateNormalData(x_max, x_min, y_max, y_min, x_steps, y_steps)
-    );
+    surface.BufferData(CreateSurfaceData(x_max, x_min, y_max, y_min, x_steps, y_steps),);
 
     gl.enable(gl.DEPTH_TEST);
 }
@@ -309,6 +267,26 @@ function createProgram(gl, vShader, fShader) {
  */
 function init() {
     let canvas;
+    document.getElementById('conv').addEventListener("change", () => {
+        conv = parseFloat(document.getElementById('conv').value)
+        cam.mConvergence = conv
+        draw()
+    })
+    document.getElementById('eyes').addEventListener("change", () => {
+        eyes = parseFloat(document.getElementById('eyes').value)
+        cam.mEyeSeparation = eyes
+        draw()
+    })
+    document.getElementById('fov').addEventListener("change", () => {
+        fov = deg2rad(parseFloat(document.getElementById('fov').value))
+        cam.mFOV = fov
+        draw()
+    })
+    document.getElementById('near').addEventListener("change", () => {
+        near = parseFloat(document.getElementById('near').value)
+        cam.mNearClippingDistance = near
+        draw()
+    })
     try {
         canvas = document.getElementById("webglcanvas");
         gl = canvas.getContext("webgl");
@@ -322,6 +300,14 @@ function init() {
         return;
     }
     try {
+        // Set up the stereo camera system
+        cam = new StereoCamera(
+            conv,     // Convergence
+            eyes,       // Eye Separation
+            1,     // Aspect Ratio
+            fov,       // FOV along Y in degrees
+            near,       // Near Clipping Distance
+            20.0);   // Far Clipping Distance
         initGL();  // initialize the WebGL graphics context
     }
     catch (e) {
