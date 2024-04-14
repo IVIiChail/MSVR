@@ -28,6 +28,7 @@ let surface;                    // A surface model
 let shProgram;                  // A shader program
 let spaceball;                  // A SimpleRotator object that lets the user rotate the view by mouse.
 let cam;
+let webcam, webcamTexture, webcamModel;
 
 function deg2rad(angle) {
     return angle * Math.PI / 180;
@@ -37,6 +38,7 @@ function deg2rad(angle) {
 function Model(name) {
     this.name = name;
     this.iVertexBuffer = gl.createBuffer();
+    this.iVertexTextureBuffer = gl.createBuffer();
     this.count = 0;
 
     this.BufferData = function (vertices) {
@@ -46,7 +48,12 @@ function Model(name) {
 
         this.count = vertices.length / 3;
     }
+    this.TextureBufferData = function (vertices) {
 
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexTextureBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STREAM_DRAW);
+
+    }
     this.Draw = function () {
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexBuffer);
@@ -64,6 +71,16 @@ function Model(name) {
         for (let i = 0; i < count_horisontal_steps; i++) {
             gl.drawArrays(gl.LINE_STRIP, n * i, n);
         }
+    }
+    this.DrawTextured = function () {
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexBuffer);
+        gl.vertexAttribPointer(shProgram.iAttribVertex, 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(shProgram.iAttribVertex);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.iVertexTextureBuffer);
+        gl.vertexAttribPointer(shProgram.iAttribVertexTexture, 2, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(shProgram.iAttribVertexTexture);
+
+        gl.drawArrays(gl.TRIANGLES, 0, this.count);
     }
 }
 
@@ -91,7 +108,7 @@ function ShaderProgram(name, program) {
  * (Note that the use of the above drawPrimitive function is not an efficient
  * way to draw with WebGL.  Here, the geometry is so simple that it doesn't matter.)
  */
-function draw() {
+function draw(animate = false) {
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
@@ -106,9 +123,20 @@ function draw() {
 
     let matAccum0 = m4.multiply(rotateToPointZero, modelView);
     let matAccum1 = m4.multiply(translateToPointZero, matAccum0);
-
-    /* Draw the six faces of a cube, with different colors. */
-    
+    gl.uniform1f(shProgram.iT, true);
+    gl.bindTexture(gl.TEXTURE_2D, webcamTexture);
+    gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        webcam
+    );
+    gl.uniformMatrix4fv(shProgram.iModelViewProjectionMatrix, false, m4.identity());
+    webcamModel.DrawTextured()
+    gl.clear(gl.DEPTH_BUFFER_BIT)
+    gl.uniform1f(shProgram.iT, false);
 
     /* Multiply the projection matrix times the modelview matrix to give the
        combined transformation matrix, and send that to the shader program. */
@@ -118,7 +146,7 @@ function draw() {
     gl.uniformMatrix4fv(shProgram.iModelViewProjectionMatrix, false, modelViewProjection);
     gl.colorMask(true, false, false, false);
     gl.uniform4fv(shProgram.iColor, [1, 1, 0, 1]);
-    surface.Draw();
+    surface.DrawTextured();
     gl.uniform4fv(shProgram.iColor, [0, 0, 1, 1]);
     surface.DrawLines();
 
@@ -129,11 +157,14 @@ function draw() {
     gl.uniformMatrix4fv(shProgram.iModelViewProjectionMatrix, false, modelViewProjection);
     gl.colorMask(false, true, true, false);
     gl.uniform4fv(shProgram.iColor, [1, 1, 0, 1]);
-    surface.Draw();
+    surface.DrawTextured();
     gl.uniform4fv(shProgram.iColor, [0, 0, 1, 1]);
     surface.DrawLines();
 
     gl.colorMask(true, true, true, true);
+    if (animate) {
+        window.requestAnimationFrame(()=>draw(true));
+    }
 }
 
 function CreateSurfaceData(x_max, x_min, y_max, y_min, x_steps, y_steps) {
@@ -183,35 +214,6 @@ function CreateSurfaceData(x_max, x_min, y_max, y_min, x_steps, y_steps) {
     return vertexList;
 }
 
-// main rendering function
-// function DrawGLScene() {
-//     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-//     // Set up the stereo camera system
-//     cam = new StereoCamera(
-//         2000.0,     // Convergence
-//         70.0,       // Eye Separation
-//         1.3333,     // Aspect Ratio
-//         45.0,       // FOV along Y in degrees
-//         10.0,       // Near Clipping Distance
-//         20000.0);   // Far Clipping Distance
-
-//     cam.ApplyLeftFrustum();
-//     gl.colorMask(true, false, false, false);
-
-//     DrawSurface();
-
-//     gl.clear(GL_DEPTH_BUFFER_BIT);
-
-//     cam.ApplyRightFrustum();
-//     gl.colorMask(false, true, true, false);
-
-//     DrawSurface();
-
-//     gl.colorMask(true, true, true, true);
-// }
-
-
 /* Initialize the WebGL context. Called from init() */
 function initGL() {
     let prog = createProgram(gl, vertexShaderSource, fragmentShaderSource);
@@ -220,12 +222,17 @@ function initGL() {
     shProgram.Use();
 
     shProgram.iAttribVertex = gl.getAttribLocation(prog, "vertex");
+    shProgram.iAttribVertexTexture = gl.getAttribLocation(prog, "textureCoord");
     shProgram.iModelViewProjectionMatrix = gl.getUniformLocation(prog, "ModelViewProjectionMatrix");
     shProgram.iColor = gl.getUniformLocation(prog, "color");
+    shProgram.iT = gl.getUniformLocation(prog, "textured");
 
     surface = new Model('Surface');
     surface.BufferData(CreateSurfaceData(x_max, x_min, y_max, y_min, x_steps, y_steps),);
-
+    surface.TextureBufferData(CreateSurfaceData(x_max, x_min, y_max, y_min, x_steps, y_steps),);
+    webcamModel = new Model('Webcam');
+    webcamModel.BufferData([-1, -1, 0, 1, 1, 0, 1, -1, 0, 1, 1, 0, -1, -1, 0, -1, 1, 0])
+    webcamModel.TextureBufferData([1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0])
     gl.enable(gl.DEPTH_TEST);
 }
 
@@ -266,6 +273,7 @@ function createProgram(gl, vShader, fShader) {
  * initialization function that will be called when the page has loaded
  */
 function init() {
+    webcam = webCam();
     let canvas;
     document.getElementById('conv').addEventListener("change", () => {
         conv = parseFloat(document.getElementById('conv').value)
@@ -315,8 +323,7 @@ function init() {
             "<p>Sorry, could not initialize the WebGL graphics context: " + e + "</p>";
         return;
     }
-
+    webcamTexture = webCamTexture()
     spaceball = new TrackballRotator(canvas, draw, 0);
-
-    draw();
+    draw(true);
 }
