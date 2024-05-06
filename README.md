@@ -1,3 +1,3 @@
 # MSVR
 
-![plot](./screenshots/lab3.gif)
+![plot](./screenshots/lab4.gif)
