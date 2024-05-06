@@ -140,9 +140,11 @@ function draw(animate = false) {
 
     /* Multiply the projection matrix times the modelview matrix to give the
        combined transformation matrix, and send that to the shader program. */
+    let matAccX = m4.axisRotation([0.0, 1.0, 0.0], -Math.PI / 2.0 * sensor.x / 10.0);
+    let matAccY = m4.axisRotation([1.0, 0.0, 0.0], Math.PI / 2.0 * sensor.y / 10.0);
     let modelViewProjection = m4.multiply(projection, matAccum1);
     cam.ApplyLeftFrustum()
-    modelViewProjection = m4.multiply(cam.projection, m4.multiply(cam.modelView, matAccum1));
+    modelViewProjection = m4.multiply(cam.projection, m4.multiply(cam.modelView, m4.multiply(matAccum1, m4.multiply(matAccX, matAccY))));
     gl.uniformMatrix4fv(shProgram.iModelViewProjectionMatrix, false, modelViewProjection);
     gl.colorMask(true, false, false, false);
     gl.uniform4fv(shProgram.iColor, [1, 1, 0, 1]);
@@ -153,7 +155,7 @@ function draw(animate = false) {
     gl.clear(gl.DEPTH_BUFFER_BIT)
 
     cam.ApplyRightFrustum()
-    modelViewProjection = m4.multiply(cam.projection, m4.multiply(cam.modelView, matAccum1));
+    modelViewProjection = m4.multiply(cam.projection, m4.multiply(cam.modelView, m4.multiply(matAccum1, m4.multiply(matAccX, matAccY))));
     gl.uniformMatrix4fv(shProgram.iModelViewProjectionMatrix, false, modelViewProjection);
     gl.colorMask(false, true, true, false);
     gl.uniform4fv(shProgram.iColor, [1, 1, 0, 1]);
@@ -163,7 +165,7 @@ function draw(animate = false) {
 
     gl.colorMask(true, true, true, true);
     if (animate) {
-        window.requestAnimationFrame(()=>draw(true));
+        window.requestAnimationFrame(() => draw(true));
     }
 }
 
@@ -273,6 +275,7 @@ function createProgram(gl, vShader, fShader) {
  * initialization function that will be called when the page has loaded
  */
 function init() {
+    readAccelerometer()
     webcam = webCam();
     let canvas;
     document.getElementById('conv').addEventListener("change", () => {
