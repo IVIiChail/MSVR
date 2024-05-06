@@ -1,4 +1,3 @@
 # VGGI
 
-![plot](./screenshots/recording_2.gif)
-![plot](./screenshots/lab2.png)
+![plot](./screenshots/lab3.gif)
