@@ -25,6 +25,7 @@ let conv = 50, eyes = 1, fov = 45, near = 1;
 
 let gl;                         // The webgl context.
 let surface;                    // A surface model
+let surfacee;
 let shProgram;                  // A shader program
 let spaceball;                  // A SimpleRotator object that lets the user rotate the view by mouse.
 let cam;
@@ -108,16 +109,7 @@ function ShaderProgram(name, program) {
  * (Note that the use of the above drawPrimitive function is not an efficient
  * way to draw with WebGL.  Here, the geometry is so simple that it doesn't matter.)
  */
-
-
 function draw(animate = false) {
-  gyroToMat()
-
-
-
-
-  let message = document.getElementById('message')
-  message.innerText = deltaRotationMatrix
   gl.clearColor(0, 0, 0, 1);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
@@ -146,19 +138,18 @@ function draw(animate = false) {
   webcamModel.DrawTextured()
   gl.clear(gl.DEPTH_BUFFER_BIT)
   gl.uniform1f(shProgram.iT, false);
+  gl.uniformMatrix4fv(shProgram.iModelViewProjectionMatrix, false, m4.translation(...fusionVector));
+  surfacee.DrawTextured();
+  gl.clear(gl.DEPTH_BUFFER_BIT)
 
   /* Multiply the projection matrix times the modelview matrix to give the
      combined transformation matrix, and send that to the shader program. */
-  // let matAccX = m4.axisRotation([0.0, 1.0, 0.0], -Math.PI / 2.0 * sensor.x / 10.0);
-  // let matAccY = m4.axisRotation([1.0, 0.0, 0.0], Math.PI / 2.0 * sensor.y / 10.0);
+  let matAccX = m4.axisRotation([0.0, 1.0, 0.0], -Math.PI / 2.0 * sensor.x / 10.0);
+  let matAccY = m4.axisRotation([1.0, 0.0, 0.0], Math.PI / 2.0 * sensor.y / 10.0);
+  if (panner) { panner.setPosition(...fusionVector) }
   let modelViewProjection = m4.multiply(projection, matAccum1);
   cam.ApplyLeftFrustum()
-  // gyroToMat()
-  if (started) {
-    modelViewProjection = m4.multiply(cam.projection, m4.multiply(cam.modelView, m4.multiply(matAccum1, deltaRotationMatrix)));
-  }
-  // modelViewProjection = m4.multiply(cam.projection, m4.multiply(cam.modelView, matAccum1));
-  // modelViewProjection = m4.multiply(cam.projection, m4.multiply(cam.modelView, m4.multiply(matAccum1, m4.multiply(matAccX, matAccY))));
+  modelViewProjection = m4.multiply(cam.projection, m4.multiply(cam.modelView, m4.multiply(matAccum1, fusionMatrix)));
   gl.uniformMatrix4fv(shProgram.iModelViewProjectionMatrix, false, modelViewProjection);
   gl.colorMask(true, false, false, false);
   gl.uniform4fv(shProgram.iColor, [1, 1, 0, 1]);
@@ -168,9 +159,10 @@ function draw(animate = false) {
 
   gl.clear(gl.DEPTH_BUFFER_BIT)
 
+
   cam.ApplyRightFrustum()
   // modelViewProjection = m4.multiply(cam.projection, m4.multiply(cam.modelView, m4.multiply(matAccum1, m4.multiply(matAccX, matAccY))));
-  // modelViewProjection = m4.multiply(cam.projection, m4.multiply(cam.modelView, m4.multiply(matAccum1, deltaRotationMatrix)));
+  modelViewProjection = m4.multiply(cam.projection, m4.multiply(cam.modelView, m4.multiply(matAccum1, fusionMatrix)));
   gl.uniformMatrix4fv(shProgram.iModelViewProjectionMatrix, false, modelViewProjection);
   gl.colorMask(false, true, true, false);
   gl.uniform4fv(shProgram.iColor, [1, 1, 0, 1]);
@@ -181,6 +173,38 @@ function draw(animate = false) {
   gl.colorMask(true, true, true, true);
   if (animate) {
     window.requestAnimationFrame(() => draw(true));
+  }
+}
+function CreateSphereData() {
+  let vertexList = [];
+
+  let u = 0;
+  let t = 0;
+  while (u < Math.PI * 2) {
+    while (t < Math.PI) {
+      let v1 = getSphereVertex(u, t);
+      let v2 = getSphereVertex(u + 0.1, t);
+      let v3 = getSphereVertex(u, t + 0.1);
+      let v4 = getSphereVertex(u + 0.1, t + 0.1);
+      vertexList.push(v1.x, v1.y, v1.z);
+      vertexList.push(v2.x, v2.y, v2.z);
+      vertexList.push(v3.x, v3.y, v3.z);
+      vertexList.push(v3.x, v3.y, v3.z);
+      vertexList.push(v2.x, v2.y, v2.z);
+      vertexList.push(v4.x, v4.y, v4.z);
+      t += 0.1;
+    }
+    t = 0;
+    u += 0.1;
+  }
+  return vertexList;
+}
+let radius = 0.05;
+function getSphereVertex(long, lat) {
+  return {
+    x: radius * Math.cos(long) * Math.sin(lat),
+    y: radius * Math.sin(long) * Math.sin(lat),
+    z: radius * Math.cos(lat)
   }
 }
 
@@ -247,6 +271,9 @@ function initGL() {
   surface = new Model('Surface');
   surface.BufferData(CreateSurfaceData(x_max, x_min, y_max, y_min, x_steps, y_steps),);
   surface.TextureBufferData(CreateSurfaceData(x_max, x_min, y_max, y_min, x_steps, y_steps),);
+  surfacee = new Model()
+  surfacee.BufferData(CreateSphereData())
+  surfacee.TextureBufferData(CreateSphereData())
   webcamModel = new Model('Webcam');
   webcamModel.BufferData([-1, -1, 0, 1, 1, 0, 1, -1, 0, 1, 1, 0, -1, -1, 0, -1, 1, 0])
   webcamModel.TextureBufferData([1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0])
@@ -290,8 +317,8 @@ function createProgram(gl, vShader, fShader) {
  * initialization function that will be called when the page has loaded
  */
 function init() {
-  // readAccelerometer()
-  // readGyroscope()
+  readAccelerometer()
+  initAudio()
   webcam = webCam();
   let canvas;
   document.getElementById('conv').addEventListener("change", () => {
@@ -342,30 +369,31 @@ function init() {
       "<p>Sorry, could not initialize the WebGL graphics context: " + e + "</p>";
     return;
   }
+
   webcamTexture = webCamTexture()
   spaceball = new TrackballRotator(canvas, draw, 0);
-  
-  if (window.DeviceOrientationEvent) {
-    window.addEventListener(
-      "deviceorientation",
-      (event) => {
-        const rotateDegrees = event.alpha; // alpha: rotation around z-axis
-        const leftToRight = event.gamma; // gamma: left to right
-        const frontToBack = event.beta; // beta: front back motion
-        handleOrientationEvent(frontToBack, leftToRight, rotateDegrees);
-        console.log('deviceorientation')
-      },
-      true,
-    );
-    // console.log('if')
-    document.getElementById('message').innerText = "if"
-  } else {
-    // console.log('else')
-
-  }
+  draw(true);
+  window.addEventListener(
+    "deviceorientation",
+    (event) => {
+      const rotateDegrees = event.alpha; // alpha: rotation around z-axis
+      const leftToRight = event.gamma; // gamma: left to right
+      const frontToBack = event.beta; // beta: front back motion
+      handleOrientationEvent(frontToBack, leftToRight, rotateDegrees);
+      document.getElementById('message').innerText = Date.now()
+    },
+    true,
+  );
+  // console.log('if')
+  document.getElementById('message').innerText = "if"
 
   const handleOrientationEvent = (frontToBack, leftToRight, rotateDegrees) => {
-    console.log('handleOrientationEvent')
-    document.getElementById('message').innerText = `${frontToBack}, ${leftToRight}, ${rotateDegrees}`
+    fusionVector = anglesToVector(rotateDegrees, frontToBack, leftToRight)
+    let xM = m4.xRotation(deg2rad(frontToBack))
+    let yM = m4.yRotation(deg2rad(leftToRight))
+    let zM = m4.zRotation(deg2rad(rotateDegrees))
+    fusionMatrix = m4.multiply(xM, m4.multiply(yM, zM))
   };
 }
+let fusionMatrix = m4.identity()
+let fusionVector = [0, 0, 0]

@@ -4,7 +4,7 @@
 <head>
   <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 
-  <title>PA#3</title>
+  <title>CGW</title>
   <style>
     body {
       background-color: #eeeeee;
@@ -15,14 +15,17 @@
   <script src="./Utils/m4.js"></script>
   <script src="./shader.gpu"></script>
   <script src="./Accelerometer.js"></script>
-  <script src="./Gyroscope.js"></script>
   <script src="./WebCamera.js"></script>
   <script src="./StereoCamera.js"></script>
+  <script src="./AudioContext.js"></script>
   <script src="./main.js"></script>
 </head>
 
 <body onload="init()">
-  <button onclick="readGyroscope()">readGyroscope</button>
+  <audio id="audio" src="https://94fca2a6-4be1-48ae-bb31-d4f231461a04-00-wb50jds3opuz.riker.replit.dev//Baby_Lasagna_Rim_Tim_Tagi_Dim.mp3"
+    crossorigin="anonymous" controls></audio>
+  <label for="filterCheckbox">Застосувати шельфовий фільтр високих частот</label>
+  <input type="checkbox" name="filterCheckbox" id="filterCheckbox" checked><br>
   <h2>Shoe surface with "Trackball" Mouse Rotation</h2>
 
   <p id="message">
